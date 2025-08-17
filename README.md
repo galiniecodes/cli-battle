@@ -46,6 +46,7 @@ Data layer and CRUD endpoints for scheduling phone call reminders.
 
 - M1 — Data Layer & CRUD Operations: Created
 - M2 — Web Dashboard: Created
+- M3 — Scheduler & Processing Engine: Created
 
 ### Environment
 
@@ -177,3 +178,83 @@ Call Now Feature
 - Server also validates phone numbers (E.164) on `POST /api/reminders`.
 - `APP_BASE_URL` is optional for M2; the "Call Now" route triggers the scheduler inline for reliable local behavior.
 - Full Twilio integration, retries, escalation, and IVR flow come in later milestones.
+
+---
+
+## Scheduler & Processing Engine (M3)
+
+Implements end-to-end reminder processing with Twilio calls, retries, escalation, IVR input, and a real-time tick endpoint.
+
+### Features
+
+- Scheduler Tick (`POST /api/scheduler/tick`):
+  - Finds due reminders (`next_attempt_at <= now` and `status in [SCHEDULED, RETRYING, ESCALATED]`).
+  - Atomically reserves items (moves to `CALLING`) with guarded `updateMany` to avoid double processing.
+  - Selects dial target: primary if `attempts < 1`; when `ESCALATED`, backup if `backup_attempts < 1`.
+  - Initiates Twilio call with webhooks and creates `CallLog` (`call_sid`).
+  - On initiation failure, logs an error entry and escalates or completes per rules.
+  - Auto-advances exhausted items: primary exhausted → `ESCALATED` (if backup) or `DONE`; backup exhausted → `DONE`.
+  - Returns JSON summary: `{ due_found, reserved, calls_initiated, skipped, errors }`.
+
+- Retry & Escalation Rules:
+  - Primary attempts: max 1; on failure → `ESCALATED` (+1 min delay) if backup exists else `DONE`.
+  - Backup attempts: max 1; on failure → `DONE`.
+  - Manual re-arm via `POST /api/call-now` resets attempts by default.
+
+- Twilio Integration:
+  - Outbound call initiation using REST API with `Url` → `/api/voice/answer` and `StatusCallback` → `/api/voice/status`.
+  - IVR with `<Gather>` at `/api/voice/answer`:
+    - Press 1 to confirm → marks `DONE`.
+    - Press 9 to snooze → `RETRYING` with `next_attempt_at = now + 1 min`.
+  - Status callbacks at `/api/voice/status` update state: `completed` → `DONE`; primary failures → `ESCALATED` or `DONE`; backup failures → `DONE`.
+
+- Server Logging:
+  - Scheduler, Twilio initiation, and webhooks emit concise logs with masked phone numbers and short IDs.
+
+### Endpoints
+
+- `POST /api/scheduler/tick`
+  - Triggers one processing tick. Response example:
+    ```json
+    { "due_found": 3, "reserved": 2, "calls_initiated": 2, "skipped": 1, "errors": 0 }
+    ```
+
+- `POST /api/call-now`
+  - Body: `{ "id": "<reminder_id>", "reset": true }` (default `reset=true`).
+  - Sets `status = SCHEDULED`, `next_attempt_at = now`; when `reset=true`, also resets `attempts` and `backup_attempts`.
+
+- `POST /api/voice/answer` (Twilio fetches; also responds to GET for testing)
+  - Returns TwiML with `<Gather>` (1 digit) and safe XML-escaped action URL.
+
+- `POST /api/voice/gather` (Twilio posts digits)
+  - `Digits=1` → mark `DONE`.
+  - `Digits=9` → `RETRYING` with +1 minute snooze.
+
+- `POST /api/voice/status` (Twilio posts call status)
+  - Logs status and drives retry/escalation/complete transitions.
+
+### Environment
+
+- Required: `DATABASE_URL`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `APP_BASE_URL`.
+- Mock mode (local/offline): set `TWILIO_MOCK=1` to simulate call initiation (no external request); scheduler still logs and writes `CallLog` with a mock SID.
+
+### Ngrok Setup (for real calls)
+
+- Run `ngrok http 3000` and copy the HTTPS URL.
+- Set `APP_BASE_URL` to the ngrok HTTPS URL (no trailing slash), restart dev server.
+- Twilio trial: you can only call verified destination numbers; the `From` must be your Twilio voice-enabled number.
+- Tip: Open `GET $APP_BASE_URL/api/voice/answer?rid=test&target=primary` in a browser to verify valid TwiML (XML) is returned.
+
+### Common Pitfalls
+
+- Missing or wrong `APP_BASE_URL` → Twilio cannot reach webhooks.
+- Trial calling unverified numbers → Twilio rejects.
+- Invalid `From` number (not your Twilio voice-enabled number) → API error.
+- TwiML XML errors (12100): ensure `<Response>` root and properly escaped `&` in attribute URLs; this repo’s `answer` route handles escaping.
+
+### Quick Testing Flow
+
+1. Create a reminder with `scheduled_at` in the past (or use the dashboard’s Call Now).
+2. POST `/api/scheduler/tick` to process. Watch server logs for:
+   - `[scheduler] reserved …`, `[twilio] create call …`, and status callbacks (`[voice:status] …`).
+3. For offline tests, set `TWILIO_MOCK=1` and repeat — you should see mock SIDs and logs without external calls.

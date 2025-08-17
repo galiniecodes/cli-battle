@@ -7,17 +7,20 @@ import { processDueReminders } from '@/lib/scheduler'
 // - Invokes /api/scheduler/tick to process immediately
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => null) as { id?: string } | null
+    const body = await request.json().catch(() => null) as { id?: string, reset?: boolean } | null
     if (!body || typeof body !== 'object' || !body.id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
     const now = new Date()
+    const reset = body.reset !== false // default true for convenient manual retries
+    console.log(`[call-now] scheduling now rid=${body.id?.slice(-6)} reset=${reset}`)
     const updated = await prisma.reminder.update({
       where: { id: body.id },
       data: {
         status: 'SCHEDULED',
         next_attempt_at: now,
+        ...(reset ? { attempts: 0, backup_attempts: 0, last_outcome: 'Manually re-armed' } : {}),
       },
     }).catch((e) => {
       if ((e as any)?.code === 'P2025') return null
@@ -31,8 +34,8 @@ export async function POST(request: Request) {
     // Trigger scheduler inline to ensure immediate processing locally
     try {
       await processDueReminders(10)
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error('[call-now] inline scheduler error', e)
     }
 
     return NextResponse.json({ ok: true })
