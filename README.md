@@ -34,3 +34,89 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Scheduled Phone Call Reminder System (M1)
+
+Data layer and CRUD endpoints for scheduling phone call reminders.
+
+- PostgreSQL via Prisma with `Reminder` and `CallLog` models
+- REST API `/api/reminders` with `GET` and `POST`
+
+### Milestones
+
+- M1 — Data Layer & CRUD Operations: Created
+
+### Environment
+
+Copy `.env.example` to `.env` and set values:
+
+```
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/yourdb?schema=public"
+TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+TWILIO_AUTH_TOKEN="your_auth_token"
+TWILIO_PHONE_NUMBER="+15551234567"
+APP_BASE_URL="http://localhost:3000"
+```
+
+### Setup
+
+- Install dependencies: `npm install`
+- Generate Prisma client: `npm run db:generate`
+- Run migrations: `npm run db:migrate`
+- (Optional) Seed sample data: `npm run db:seed`
+- Start dev server: `npm run dev`
+
+### API
+
+Endpoint: `/api/reminders`
+
+- `GET` — list all reminders ordered by `created_at` DESC
+- `POST` — create a reminder. Body fields:
+  - `title` (string, required)
+  - `primary_phone` (E.164, required, e.g. `+15551234567`)
+  - `backup_phone` (E.164, optional)
+  - `scheduled_at` (ISO string, required)
+
+Defaults on creation:
+
+- `status = SCHEDULED`
+- `attempts = 0`, `backup_attempts = 0`
+- `next_attempt_at = scheduled_at`
+
+### Curl Examples
+
+Create (201):
+
+```
+curl -s -X POST http://localhost:3000/api/reminders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Dentist Appointment",
+    "primary_phone": "+15551234567",
+    "backup_phone": "+15557654321",
+    "scheduled_at": "2025-01-01T09:00:00.000Z"
+  }'
+```
+
+Invalid phone (400):
+
+```
+curl -s -X POST http://localhost:3000/api/reminders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Bad Phone",
+    "primary_phone": "+123",
+    "scheduled_at": "2025-01-01T09:00:00.000Z"
+  }'
+```
+
+List (GET):
+
+```
+curl -s http://localhost:3000/api/reminders | jq
+```
+
+### Notes
+
+- Phone validation enforces E.164 with 10–15 digits (`+` followed by digits), rejecting inputs like `+123` or `555-1234`.
+- Server timezone is used as-is; no timezone conversion is performed.

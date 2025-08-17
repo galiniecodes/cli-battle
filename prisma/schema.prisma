@@ -1,0 +1,52 @@
+// Prisma schema for Scheduled Phone Call Reminder System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Status {
+  SCHEDULED
+  CALLING
+  RETRYING
+  DONE
+  ESCALATED
+}
+
+model Reminder {
+  id              String    @id @default(cuid())
+  title           String
+  primary_phone   String
+  backup_phone    String?   // optional backup contact
+  scheduled_at    DateTime
+  next_attempt_at DateTime?
+  attempts        Int       @default(0)
+  backup_attempts Int       @default(0)
+  status          Status    @default(SCHEDULED)
+  created_at      DateTime  @default(now())
+  last_outcome    String?   @db.Text
+
+  call_logs       CallLog[]
+
+  @@index([created_at], map: "idx_reminder_created_at")
+}
+
+model CallLog {
+  id          String    @id @default(cuid())
+  reminder_id String
+  call_sid    String
+  outcome     String
+  transcript  String?   @db.Text
+  intent      String?
+  created_at  DateTime  @default(now())
+
+  reminder    Reminder  @relation(fields: [reminder_id], references: [id], onDelete: Cascade)
+
+  @@index([reminder_id], map: "idx_calllog_reminder_id")
+  @@index([created_at], map: "idx_calllog_created_at")
+}
+
