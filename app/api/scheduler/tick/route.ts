@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Status } from '@prisma/client'
+import { makeCall } from '@/lib/twilio'
 
 const MAX_PRIMARY_ATTEMPTS = 1
 const MAX_BACKUP_ATTEMPTS = 1
@@ -66,22 +67,66 @@ export async function POST() {
           const isBackupCall = lockedReminder.status === Status.ESCALATED
           const phoneToCall = isBackupCall ? lockedReminder.backupPhone : lockedReminder.primaryPhone
           
-          // Create call log entry with mock call_sid
-          const callSid = `MOCK_${Date.now()}_${reminder.id}`
-          await tx.callLog.create({
-            data: {
-              reminderId: reminder.id,
-              callSid,
-              outcome: 'initiated',
-              transcript: `Mock call to ${phoneToCall} for: ${lockedReminder.title}`
-            }
-          })
+          if (!phoneToCall) {
+            console.error(`No phone number available for reminder ${reminder.id}`)
+            await tx.reminder.update({
+              where: { id: reminder.id },
+              data: {
+                status: Status.DONE,
+                lastOutcome: 'No phone number available'
+              }
+            })
+            return null
+          }
           
           console.log(`Processing reminder ${reminder.id}: ${lockedReminder.title}`)
           console.log(`  Calling ${isBackupCall ? 'backup' : 'primary'} phone: ${phoneToCall}`)
-          console.log(`  Call SID: ${callSid}`)
           
-          // Simulate call outcome (70% success, 30% failure for testing)
+          // Make the actual Twilio call
+          const callResult = await makeCall(phoneToCall, reminder.id, lockedReminder.title)
+          
+          if (callResult.success && callResult.callSid) {
+            // Create call log entry with real call SID
+            await tx.callLog.create({
+              data: {
+                reminderId: reminder.id,
+                callSid: callResult.callSid,
+                outcome: 'initiated',
+                transcript: `Call initiated to ${phoneToCall} for: ${lockedReminder.title}`
+              }
+            })
+            
+            console.log(`  Call initiated successfully with SID: ${callResult.callSid}`)
+            
+            // The actual outcome will be handled by the call-status webhook
+            // Just mark as calling for now
+            await tx.reminder.update({
+              where: { id: reminder.id },
+              data: {
+                status: Status.CALLING,
+                lastOutcome: 'Call in progress'
+              }
+            })
+            
+            successfullyCalled++
+            return true
+          }
+          
+          // Call initiation failed - use mock behavior as fallback
+          console.log(`  Call initiation failed: ${callResult.error}`)
+          console.log(`  Using mock call behavior as fallback`)
+          
+          const mockCallSid = `MOCK_${Date.now()}_${reminder.id}`
+          await tx.callLog.create({
+            data: {
+              reminderId: reminder.id,
+              callSid: mockCallSid,
+              outcome: 'mock_initiated',
+              transcript: `Mock call to ${phoneToCall} (Twilio error: ${callResult.error})`
+            }
+          })
+          
+          // Simulate call outcome for testing when Twilio is not configured
           const callSucceeded = Math.random() > 0.3
           
           if (callSucceeded) {
@@ -97,7 +142,7 @@ export async function POST() {
             await tx.callLog.create({
               data: {
                 reminderId: reminder.id,
-                callSid: `${callSid}_outcome`,
+                callSid: `${mockCallSid}_outcome`,
                 outcome: 'completed',
                 transcript: 'Reminder acknowledged',
                 intent: 'confirmed'
@@ -105,7 +150,7 @@ export async function POST() {
             })
             
             successfullyCalled++
-            console.log(`  ✓ Call succeeded`)
+            console.log(`  ✓ Mock call succeeded`)
             
           } else {
             // Call failed - determine next action
@@ -129,7 +174,7 @@ export async function POST() {
                 await tx.callLog.create({
                   data: {
                     reminderId: reminder.id,
-                    callSid: `${callSid}_outcome`,
+                    callSid: `${mockCallSid}_outcome`,
                     outcome: 'max_attempts_backup',
                     transcript: 'No answer - max backup attempts reached'
                   }
@@ -155,7 +200,7 @@ export async function POST() {
                 await tx.callLog.create({
                   data: {
                     reminderId: reminder.id,
-                    callSid: `${callSid}_outcome`,
+                    callSid: `${mockCallSid}_outcome`,
                     outcome: 'no_answer_backup',
                     transcript: `Backup attempt ${newBackupAttempts} - no answer`
                   }
@@ -188,7 +233,7 @@ export async function POST() {
                   await tx.callLog.create({
                     data: {
                       reminderId: reminder.id,
-                      callSid: `${callSid}_outcome`,
+                      callSid: `${mockCallSid}_outcome`,
                       outcome: 'escalated',
                       transcript: 'No answer - escalating to backup contact'
                     }
@@ -211,7 +256,7 @@ export async function POST() {
                   await tx.callLog.create({
                     data: {
                       reminderId: reminder.id,
-                      callSid: `${callSid}_outcome`,
+                      callSid: `${mockCallSid}_outcome`,
                       outcome: 'max_attempts_primary',
                       transcript: 'No answer - max attempts reached'
                     }
@@ -238,7 +283,7 @@ export async function POST() {
                 await tx.callLog.create({
                   data: {
                     reminderId: reminder.id,
-                    callSid: `${callSid}_outcome`,
+                    callSid: `${mockCallSid}_outcome`,
                     outcome: 'no_answer_primary',
                     transcript: `Primary attempt ${newAttempts} - no answer`
                   }

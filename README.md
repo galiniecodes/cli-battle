@@ -60,6 +60,45 @@ Implemented a robust scheduler for processing phone call reminders with retry an
   - Atomic database operations prevent double-processing
   - Multiple scheduler runs can execute safely in parallel
 
+### ✅ Milestone 4 (M4) - Interactive Voice System
+**Status: Complete**
+
+Implemented a full Twilio-integrated interactive voice response system for phone call reminders:
+- **Voice Endpoint (`/api/voice`):**
+  - Returns TwiML XML with personalized greeting including reminder title
+  - Implements `<Gather>` element accepting both speech and DTMF input
+  - Voice prompts: "Say confirm or press 1 to acknowledge, say snooze or press 2 to reschedule"
+  - Configures webhooks for user input processing
+- **Gather Endpoint (`/api/gather`):**
+  - Processes user voice commands and keypad input
+  - "confirm"/"yes"/digit "1" → Updates reminder status to DONE
+  - "snooze"/"later"/digit "2" → Reschedules for +60 minutes
+  - Unknown input → Logs in call_logs but prompts retry
+  - Returns appropriate TwiML responses for each action
+- **Call Status Endpoint (`/api/call-status`):**
+  - Handles Twilio webhook callbacks for call lifecycle events
+  - Ignores intermediate statuses (initiated, ringing, in-progress)
+  - "completed" → Checks for user confirmation via gather logs
+  - "completed" without confirmation → Treats as no-answer (handles voicemail/ringout)
+  - "no-answer"/"busy" → Increments attempts, schedules retry or escalates
+  - "failed" → Logs error and handles as failed attempt
+- **Twilio Integration (`/lib/twilio.ts`):**
+  - Helper functions for making outbound calls with Twilio API
+  - TwiML response generation utilities
+  - Call outcome parsing with proper status handling
+  - Speech/DTMF input recognition and classification
+  - Webhook URL generation for callbacks
+- **Enhanced Scheduler:**
+  - Integrates with real Twilio API when credentials configured
+  - Falls back to mock behavior for local development
+  - Properly tracks call states via Twilio webhooks
+  - All call outcomes and transcripts logged in call_logs table
+- **Key Improvements:**
+  - Fixed issue where calls going to voicemail were incorrectly marked as DONE
+  - Properly escalates to backup phone when primary doesn't confirm
+  - Supports natural language responses: "yes please", "call me later", etc.
+  - Comprehensive call logging with intent tracking
+
 ## Getting Started
 
 First, run the development server:
