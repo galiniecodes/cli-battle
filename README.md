@@ -1,4 +1,21 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Scheduled Phone Call Reminder System
+
+A Next.js application that enables users to schedule automated phone call reminders with retry attempts, backup contact escalation, and real-time status tracking.
+
+## Project Milestones
+
+### ✅ Milestone 1 (M1) - Data Layer & CRUD Operations
+**Status: Complete**
+
+Implemented the foundational data layer with PostgreSQL and Prisma ORM, including:
+- **Database Schema:**
+  - `reminders` table with fields for scheduling, phone numbers, retry attempts, and status tracking
+  - `call_logs` table for recording call history and outcomes
+  - Status enum: SCHEDULED, CALLING, RETRYING, DONE, ESCALATED
+- **REST API Endpoints:**
+  - `POST /api/reminders` - Create reminders with E.164 phone validation
+  - `GET /api/reminders` - List all reminders sorted by newest first
+- **Default Values:** Automatically sets status="SCHEDULED", attempts=0, next_attempt_at=scheduled_at
 
 ## Getting Started
 
