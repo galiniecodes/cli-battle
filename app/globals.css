@@ -24,3 +24,26 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Ensure form inputs have proper text color */
+input[type="text"],
+input[type="tel"],
+input[type="datetime-local"],
+input[type="email"],
+input[type="number"],
+select,
+textarea {
+  color: #111827;
+  -webkit-text-fill-color: #111827;
+}
+
+input::placeholder {
+  color: #9ca3af;
+  -webkit-text-fill-color: #9ca3af;
+  opacity: 1;
+}
+
+/* Fix datetime-local input color in Safari/Chrome */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.2);
+}

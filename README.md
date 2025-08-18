@@ -17,6 +17,25 @@ Implemented the foundational data layer with PostgreSQL and Prisma ORM, includin
   - `GET /api/reminders` - List all reminders sorted by newest first
 - **Default Values:** Automatically sets status="SCHEDULED", attempts=0, next_attempt_at=scheduled_at
 
+### ✅ Milestone 2 (M2) - Web Dashboard
+**Status: Complete**
+
+Built a comprehensive web dashboard for managing phone call reminders:
+- **Dashboard Page (`/dashboard`):**
+  - Form to create new reminders with title, primary/backup phones, and scheduled time
+  - Real-time table displaying all reminders with auto-refresh every 5 seconds
+  - Color-coded status badges: 🟢 DONE, 🟡 CALLING, 🔴 ESCALATED, 🔵 SCHEDULED, 🟠 RETRYING
+  - "Call Now" button for immediate call triggering
+  - Responsive design for mobile and desktop
+- **API Endpoints:**
+  - `POST /api/call-now` - Reset reminder to trigger immediate call
+  - `POST /api/scheduler/tick` - Process due reminders (stub implementation)
+- **Features:**
+  - E.164 phone format validation on both client and server
+  - Optimistic UI updates with loading states
+  - Clear error messages and user feedback
+  - Enhanced text visibility for better user experience
+
 ## Getting Started
 
 First, run the development server:

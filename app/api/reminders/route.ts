@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Status } from '@prisma/client'
-
-function validateE164Phone(phone: string): boolean {
-  const e164Regex = /^\+[1-9]\d{10,14}$/
-  return e164Regex.test(phone)
-}
+import { validateE164Phone } from '@/lib/phone-utils'
 
 export async function POST(request: NextRequest) {
   try {
