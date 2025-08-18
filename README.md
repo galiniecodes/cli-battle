@@ -36,6 +36,30 @@ Built a comprehensive web dashboard for managing phone call reminders:
   - Clear error messages and user feedback
   - Enhanced text visibility for better user experience
 
+### ✅ Milestone 3 (M3) - Scheduler & Processing Engine
+**Status: Complete**
+
+Implemented a robust scheduler for processing phone call reminders with retry and escalation logic:
+- **Scheduler Endpoint (`/api/scheduler/tick`):**
+  - Finds due reminders (next_attempt_at <= now, status in [SCHEDULED, RETRYING, ESCALATED])
+  - Atomically updates to CALLING status using Prisma transactions (prevents race conditions)
+  - Creates call_log entries with unique mock call_sid for each attempt
+  - Simulates call outcomes for testing (70% success rate)
+- **Retry Logic:**
+  - Primary phone: max 1 attempt with 1-minute retry delay
+  - Backup phone: max 1 attempt with 1-minute retry delay
+  - Tracks attempts separately (attempts vs backupAttempts fields)
+- **Escalation System:**
+  - After primary phone failures → ESCALATED status if backup exists
+  - After primary phone failures → DONE status if no backup available
+  - Processes ESCALATED reminders by calling backup_phone
+- **Processing Summary:**
+  - Returns detailed counts: processed, successful, retrying, escalated, completed
+  - Comprehensive logging for debugging and monitoring
+- **Concurrency Safety:**
+  - Atomic database operations prevent double-processing
+  - Multiple scheduler runs can execute safely in parallel
+
 ## Getting Started
 
 First, run the development server:
