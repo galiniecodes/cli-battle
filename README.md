@@ -258,3 +258,86 @@ Implements end-to-end reminder processing with Twilio calls, retries, escalation
 2. POST `/api/scheduler/tick` to process. Watch server logs for:
    - `[scheduler] reserved …`, `[twilio] create call …`, and status callbacks (`[voice:status] …`).
 3. For offline tests, set `TWILIO_MOCK=1` and repeat — you should see mock SIDs and logs without external calls.
+
+---
+
+## Interactive Voice System (M4)
+
+Voice flow with Twilio-compatible TwiML, interactive input handling (speech + DTMF), status callbacks, and detailed call logging.
+
+### Features
+
+- Voice Answer (`/api/voice`):
+  - Greets with reminder title and prompts: “Say confirm or press 1 to acknowledge, say snooze or press 2 to reschedule.”
+  - `<Gather input="speech dtmf" numDigits="1">` posts to `/api/gather`.
+  - Safe XML escaping and fallback messaging when no input.
+- Gather Input (`/api/gather`):
+  - Confirm: speech contains "confirm"/"yes" or `Digits=1` → `status = DONE`, clears `next_attempt_at`.
+  - Snooze: speech contains "snooze"/"call me in an hour" or `Digits=2` → `status = RETRYING`, `next_attempt_at = now + 60 min`.
+  - Unknown input → only logs; no state change.
+  - Always logs `call_logs` with `outcome='gather'`, plus `transcript` and `intent`.
+- Call Status (`/api/call-status`):
+  - Logs all outcomes to `call_logs` as `status:<status>:<target>`.
+  - `completed`: if a prior `gather` log for the same `CallSid` has `intent='confirm'` → `DONE`; otherwise escalate/close per target.
+  - `no-answer`/`busy`/`failed`/`canceled`: primary → escalate if backup else `DONE`; backup → `DONE`.
+- Twilio Helper: Initiates calls with `Url=/api/voice` and `StatusCallback=/api/call-status`.
+- Back-compat: Older endpoints under `/api/voice/answer`, `/api/voice/gather`, `/api/voice/status` remain for compatibility.
+
+### Endpoints
+
+- `GET|POST /api/voice?rid=<reminder_id>&target=primary|backup`
+  - Returns TwiML with greeting and `<Gather>`.
+- `POST /api/gather?rid=<reminder_id>&target=primary|backup`
+  - Form fields (x-www-form-urlencoded): `Digits`, `SpeechResult`, `CallSid`.
+- `POST /api/call-status?rid=<reminder_id>&target=primary|backup`
+  - Form fields: `CallSid`, `CallStatus` (e.g., `completed`, `no-answer`, `busy`, `failed`, `canceled`).
+
+### Quick Testing
+
+Voice TwiML
+
+```
+curl -s "http://localhost:3000/api/voice?rid=<RID>&target=primary"
+```
+
+Gather: Confirm
+
+```
+curl -s -X POST "http://localhost:3000/api/gather?rid=<RID>&target=primary" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'Digits=1&CallSid=CA_test_confirm'
+```
+
+Gather: Snooze 60 minutes
+
+```
+curl -s -X POST "http://localhost:3000/api/gather?rid=<RID>&target=primary" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'Digits=2&CallSid=CA_test_snooze'
+```
+
+Call Status: No Answer (primary → escalate if backup exists)
+
+```
+curl -s -X POST "http://localhost:3000/api/call-status?rid=<RID>&target=primary" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'CallSid=CA_test_status&CallStatus=no-answer'
+```
+
+Call Status: Completed without confirmation (primary)
+
+```
+curl -s -X POST "http://localhost:3000/api/call-status?rid=<RID>&target=primary" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'CallSid=CA_test_status2&CallStatus=completed'
+```
+
+### Testing Checklist
+
+- GET `/api/voice` returns valid TwiML with `<Gather>`.
+- POST `/api/gather` with "confirm" or `Digits=1` → reminder status `DONE`.
+- POST `/api/gather` with "snooze" or `Digits=2` → `next_attempt_at = now + 60 min`, status `RETRYING`.
+- Unknown gather input is logged in `call_logs` and does not change status.
+- Status `no-answer` moves flow forward (escalation if backup); backup failures end with `DONE`.
+- After primary failure and with backup available → `ESCALATED`.
+- All outcomes are logged to `call_logs`; transcripts and intents captured when available.

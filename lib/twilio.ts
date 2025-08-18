@@ -32,8 +32,8 @@ export async function initiateTwilioCall({ reminderId, to, target, title }: Init
   const authToken = env('TWILIO_AUTH_TOKEN')
   const from = env('TWILIO_PHONE_NUMBER')
 
-  const answerUrl = buildUrl('/api/voice/answer', { rid: reminderId, target })
-  const statusCallback = buildUrl('/api/voice/status', { rid: reminderId, target })
+  const answerUrl = buildUrl('/api/voice', { rid: reminderId, target })
+  const statusCallback = buildUrl('/api/call-status', { rid: reminderId, target })
 
   // Twilio Calls API expects x-www-form-urlencoded
   const form = new URLSearchParams()
