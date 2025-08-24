@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Reminder {
+  id             Int       @id @default(autoincrement())
+  title          String
+  primaryPhone   String    @map("primary_phone")
+  backupPhone    String?   @map("backup_phone")
+  scheduledAt    DateTime  @map("scheduled_at")
+  nextAttemptAt  DateTime  @map("next_attempt_at")
+  attempts       Int       @default(0)
+  backupAttempts Int       @default(0) @map("backup_attempts")
+  status         Status    @default(SCHEDULED)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastOutcome    String?   @map("last_outcome")
+  callLogs       CallLog[]
+
+  @@map("reminders")
+}
+
+model CallLog {
+  id         Int      @id @default(autoincrement())
+  reminderId Int      @map("reminder_id")
+  callSid    String?  @map("call_sid")
+  outcome    String?
+  transcript String?
+  intent     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  reminder   Reminder @relation(fields: [reminderId], references: [id])
+
+  @@map("call_logs")
+}
+
+enum Status {
+  SCHEDULED
+  CALLING
+  RETRYING
+  DONE
+  ESCALATED
+}
